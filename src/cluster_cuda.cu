@@ -7,7 +7,6 @@ const int MAX_VAL = 10000;
 const int MIN_VAL = -10000;
 
 void memAllocate() {
-    //parla dei parametri nella sezione di cuda
     cudaMalloc((void**)&d_idmaxth, sizeof(int));
     cudaMalloc((void**)&d_x, sizeof(double) * x_row * 2);
     cudaMalloc((void**)&d_row, sizeof(int));
@@ -15,7 +14,6 @@ void memAllocate() {
     cudaMalloc((void**)&d_min, sizeof(double) * 2 * d);
     cudaMalloc((void**)&d_coef, sizeof(double) * 12);
     cudaMalloc((void**)&d_q, sizeof(double) * 2 * d);
-    //memoria pinnata
     cudaMallocHost(&h_coef, sizeof(double) * 12);
     cudaMallocHost(&h_x, sizeof(double) * x_row * 2);
     cudaStreamCreate(&s1); 
@@ -28,7 +26,7 @@ void memAllocate() {
         std::cout << "errore nell'associazione tra handle e s1\n" << stat << std::endl;;
     }
 
-    //indico che il puntatore deve essere passato per riferimento al device
+    // specify that the pointer must be passed by reference to the device
     cublasSetPointerMode(handle, CUBLAS_POINTER_MODE_DEVICE);
 }
 
@@ -46,16 +44,17 @@ void memFree() {
 }
 
 /*
-    operazioni atomiche per double, di per se cuda non supporta queste operazioni per tipi double
-    ma si possono implementare mediante cast in long long int
+    atomic operations for double; by default CUDA does not support 
+    these operations on double types, but they can be implemented
+    using cast to long long int
 */
 __device__ void atomicMaxDouble(double* address, double val) {
     unsigned long long int* address_as_ull = (unsigned long long int*) address;
     unsigned long long int old = *address_as_ull, assumed;
     do {
         assumed = old;
-        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(fmax(val, __longlong_as_double(assumed)))); //prendo il pi� grande tra il valore nella cella e quello di sum attuale
-    } while (assumed != old); //se la cella viene sovrascritta da un altro thread subito dopo che ci ha scritto dentro ricontrollo per sicurezza
+        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(fmax(val, __longlong_as_double(assumed)))); 
+    } while (assumed != old); 
 }
 
 __device__ void atomicMinDouble(double* address, double val) {
@@ -63,7 +62,7 @@ __device__ void atomicMinDouble(double* address, double val) {
     unsigned long long int old = *address_as_ull, assumed;
     do {
         assumed = old;
-        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(fmin(val, __longlong_as_double(assumed)))); //prendo il pi� piccolo 
+        old = atomicCAS(address_as_ull, assumed, __double_as_longlong(fmin(val, __longlong_as_double(assumed)))); 
     } while (assumed != old); 
 }
 
@@ -77,7 +76,8 @@ __device__ void atomicAddDouble(double* address, double val) {
 }
 
 /*
-    funzione per calcolare il prodotto matrice vettore (X * e1/e2) e per memorizzare i valori massimi e minimi di c1 e c2
+    function to compute the matrix-vector product (X * e1/e2)
+    and to store the maximum and minimum values of c1 and c2
 */
 __device__ void mulMatrix(double* c1, double* c2, double* max, double* min, double th, double* x, int col, int idx, int idy) {
     double e0, e1, e2, e3;
@@ -90,7 +90,7 @@ __device__ void mulMatrix(double* c1, double* c2, double* max, double* min, doub
     e3 = cos_th;
 
     double x_idy = x[idy];
-    double x_idy_row = x[idy + col];//il dato (idy,1) non si trova di fianco ma ad una distanza col da (idy,0)
+    double x_idy_row = x[idy + col];
     double sum;
 
     sum = x_idy * e0 + x_idy_row * e1; 
@@ -132,7 +132,6 @@ __global__ void calcQKernel(double* x, int* row, double* max, double* min, doubl
     mulMatrix(c1, c2, max, min, th, x, r, idx, idy);
     __syncthreads();
 
-    //differenza tra estremi e array C1 e C2
     c1max[idy] = max[idx * 2] - c1[idy];
     c1min[idy] = c1[idy] - min[idx * 2];
     c2max[idy] = max[idx * 2 + 1] - c2[idy];
@@ -140,8 +139,7 @@ __global__ void calcQKernel(double* x, int* row, double* max, double* min, doubl
 
     __syncthreads();
 
-    //calcolo norma al quadrato
-	//la shared vale per i thread di 1 blocco tenere blocchi indipendenti
+    //compute squared norm
     __shared__ double c1maxdata, c1mindata, c2maxdata, c2mindata, b; 
     if (idy == 0) {
         c1maxdata = 0;
@@ -164,7 +162,7 @@ __global__ void calcQKernel(double* x, int* row, double* max, double* min, doubl
     val1 = cond1 * c1min[idy] + !cond1 * c1max[idy]; 
 
     bool cond2 = c2maxdata >= c2mindata;
-    val2 = cond2 * c2min[idy] + !cond2 * c2max[idy]; //se la norma di c1max supera quella di c1min prendo il secondo array e viceversa
+    val2 = cond2 * c2min[idy] + !cond2 * c2max[idy]; 
 
 
     mi = fmin(val1, val2);
@@ -174,7 +172,7 @@ __global__ void calcQKernel(double* x, int* row, double* max, double* min, doubl
 
     __syncthreads();
 
-    //riutilizzo l'array max per memorizzare la matrice Q
+    //reuse the max array to store matrix Q
     if (idy == 0) {
         Q[idx * 2] = th;
         Q[idx * 2 + 1] = b;
@@ -193,8 +191,8 @@ void launchKernelCuda(const double* X,const int num_point, double coef[]) {
     calcQKernel << <d, num_point, sharedMemorySize, s1 >> > (d_x, d_row, d_max, d_min, d_q);
    
     int idmax;
-	//controllo solo la colonna b, parto dal secondo elemento e uso stride = 2 (salto l'elemento in mezzo)
-    
+	
+    //check only column b, starting from the second element and using stride = 2 (skip the element in between)
     cublasIdamax(handle, d, d_q+1, 2, &idmax); //indice che parte da 1
  
     idmax -= 1;
