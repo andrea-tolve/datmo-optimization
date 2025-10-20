@@ -55,8 +55,9 @@ static inline double shortest_angular_distance(double from, double to){
 
 LshapeTracker::LshapeTracker(){}//Creates a blank estimator
 
-LshapeTracker::LshapeTracker(const double& x_corner, const double& y_corner, const double& L1, const double& L2, const double& theta, const double& dt){
 
+LshapeTracker::LshapeTracker(const double& x_corner, const double& y_corner, const double& L1, const double& L2, const double& theta, const double& dt){
+  
   // Initialization of Dynamic Kalman Filter
   int n = 6; // Number of states
   int m = 2; // Number of measurements
@@ -65,7 +66,7 @@ LshapeTracker::LshapeTracker(const double& x_corner, const double& y_corner, con
   MatrixXd Q(n, n); // Process noise covariance
   MatrixXd R(m, m); // Measurement noise covariance
   MatrixXd P(n, n); // Estimate error covariance
-      
+
   //A << 1, 0,dt, 0, 
        //0, 1, 0,dt, 
        //0, 0, 1, 0, 
@@ -145,7 +146,7 @@ LshapeTracker::LshapeTracker(const double& x_corner, const double& y_corner, con
 }
 
 void LshapeTracker::update(const double& thetaL1, const double& x_corner, const double& y_corner, const double& L1, const double& L2, const double& dt, const int cluster_size) {
-
+    
   current_size = cluster_size;
   detectCornerPointSwitch(old_thetaL1, thetaL1, dt);
 
@@ -182,7 +183,6 @@ void LshapeTracker::detectCornerPointSwitchMahalanobis(const double& from, const
   // For this purpose it calculates the Mahalanobis distance between the previous
   // and the current measurements and based on the lowest distance it decides if 
   // the corner point changed or not.
-  
   double x_new = x_corner;
   double y_new = y_corner;
   double theta_new = to;
@@ -275,6 +275,7 @@ void LshapeTracker::detectCornerPointSwitchMahalanobis(const double& from, const
   vy = dynamic_kf.state()(3);
 
   findOrientation(psi, length, width);
+
 }
 
 
@@ -304,7 +305,6 @@ void LshapeTracker::detectCornerPointSwitch(const double& from, const double& to
 
 void LshapeTracker::findOrientation(double& psi, double& length, double& width){
   //This function finds the orientation of a moving object, when given an L-shape orientation
-
   std::vector<double> angles;
   double angle_norm = normalize_angle(shape_kf.state()(2));
   angles.push_back(angle_norm);
@@ -335,13 +335,10 @@ void LshapeTracker::findOrientation(double& psi, double& length, double& width){
   }
 
   psi = normalize_angle(orientation);
-  
 }
-
 
 void LshapeTracker::ClockwisePointSwitch(){
   // Equation 17
-
   Vector6d new_dynamic_states = dynamic_kf.state();
   Vector4d new_shape_states = shape_kf.state();
 
@@ -376,7 +373,6 @@ void LshapeTracker::ClockwisePointSwitch(){
 
 void LshapeTracker::CounterClockwisePointSwitch(){
   // Equation 17
-
   Vector6d new_dynamic_states = dynamic_kf.state();
   Vector4d new_shape_states = shape_kf.state();
 
@@ -405,6 +401,7 @@ void LshapeTracker::CounterClockwisePointSwitch(){
 
   dynamic_kf.changeStates(new_dynamic_states);
   shape_kf.changeStates(new_shape_states);
+
 }
 
 
