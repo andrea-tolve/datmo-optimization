@@ -40,6 +40,27 @@ After rectangle fitting, L-shapes are extracted from all the rectangles.
 L-shapes represent the corner of the rectangle closer to the sensor and its two adjacent sides.
 Therefore, every L-shape contains five measurements, the position of the corner point, the orientation of the rectangle (theta) and the length of its sides (L1, L2).
 
+<br>
+
+### CUDA Acceleration
+To improve the performance of the object detection pipeline, the rectangle fitting algorithm has been partially offloaded to the GPU using CUDA. This is particularly beneficial for real-time tracking in environments with many objects.
+
+-   **GPU-Accelerated Rectangle Fitting**: The most computationally intensive part of the "Search-Based Rectangle Fitting" algorithm is now executed on the GPU. This is handled by the code in `src/cluster_cuda.cu`.
+-   **cuBLAS**: The implementation leverages the `cuBLAS` library for highly optimized vector operations, specifically using `cublasIdamax` to efficiently find the best-fitting rectangle.
+-   **Memory Management**: The necessary GPU memory is pre-allocated when the `datmo` node starts to minimize latency during runtime.
+
+#### Requirements
+-   A CUDA-enabled NVIDIA GPU.
+-   NVIDIA CUDA Toolkit installed on your system.
+
+#### Configuration
+The CUDA code is compiled based on the GPU architecture specified in the `CMakeLists.txt` file. The current configuration is set for an architecture of compute capability 8.6:
+```cmake
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_86")
+```
+You **must** change the `sm_86` value to match the compute capability of your specific GPU. You can find the compute capability of your GPU on the NVIDIA developer website. Failure to set the correct architecture will result in a compilation error or suboptimal performance.
+
+**Important Note:** The integration of CUDA is not optional. The project will fail to compile if the CUDA Toolkit is not found, and the node will not run on a system without a compatible NVIDIA GPU. There is currently no fallback to a CPU-only implementation.
 
 ## Tracking
 
