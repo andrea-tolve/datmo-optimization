@@ -39,6 +39,7 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 #include <vector>
+#include "cluster_cuda.hpp"
 
 using namespace Eigen;
 
@@ -105,7 +106,6 @@ private:
   void calcMean(const pointList& ); //Find the mean value of the cluster
   void rectangleFitting(const pointList& ); //Search-Based Rectangle Fitting 
   double areaCriterion(const VectorXd&, const VectorXd& );
-  double closenessCriterion(const VectorXd& ,const VectorXd&, const double& );
   Point lineIntersection(double& , double& , double& , double& , double& , double& );
   double perpendicularDistance(const Point&, const Point&, const Point&);
   void ramerDouglasPeucker(const std::vector<Point>&, double, std::vector<Point>&);

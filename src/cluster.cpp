@@ -28,9 +28,8 @@
  */
 
 /* Author: Konstantinos Konstantinidis */
-
+#include <exception>
 #include "cluster.hpp"
-
  
 static inline double normalize_angle_positive(double angle){
   //Normalizes the angle to be 0 to 2*M_PI.
@@ -54,12 +53,15 @@ static inline double shortest_angular_distance(double from, double to){
   return normalize_angle(to-from);
 }
 
+
+
 Cluster::Cluster(unsigned long int id, const pointList& new_points, const double& dt, const std::string& world_frame, const tf::Transform& ego_pose){
 
   this->id = id;
   this->r = rand() / double(RAND_MAX);
   this->g = rand() / double(RAND_MAX);
   this->b = rand() / double(RAND_MAX);
+
   a = 1.0;
   age = 1;
   frame_name = world_frame;
@@ -72,17 +74,23 @@ Cluster::Cluster(unsigned long int id, const pointList& new_points, const double
 
   calcMean(new_points);
   previous_mean_values = mean_values;
+
   rectangleFitting(new_points);
 
+
+  //todo tracciare l box function
   LshapeTracker l_shape_tracker_ukf(closest_corner_point.first, closest_corner_point.second, L1, L2, normalize_angle(thetaL1), dt);
+
+
   this->Lshape = l_shape_tracker_ukf;
   Lshape.BoxModel(cx, cy, cvx, cvy, th, psi, comega, L1_box, L2_box, length_box, width_box);
   
   populateTrackingMsgs(dt);
+
+
 }
 
 void Cluster::update(const pointList& new_points, const double dt, const tf::Transform& ego_pose) {
-
   ego_coordinates.first = ego_pose.getOrigin().getX();
   ego_coordinates.second= ego_pose.getOrigin().getY();
 
@@ -91,14 +99,15 @@ void Cluster::update(const pointList& new_points, const double dt, const tf::Tra
   new_cluster = new_points;
   
   calcMean(new_points);
+
   rectangleFitting(new_points);
 
-    Lshape.update(thetaL1, closest_corner_point.first, closest_corner_point.second, L1, L2, dt, new_points.size());
+
+  Lshape.update(thetaL1, closest_corner_point.first, closest_corner_point.second, L1, L2, dt, new_points.size());
 
   Lshape.BoxModel(cx, cy, cvx, cvy, th, psi, comega, L1_box, L2_box, length_box, width_box);
 
   populateTrackingMsgs(dt);
-
 }
 
 void Cluster::populateTrackingMsgs(const double& dt){
@@ -118,69 +127,35 @@ void Cluster::populateTrackingMsgs(const double& dt){
   msg_track_box_kf.odom.pose.pose.orientation = tf2::toMsg(quaternion);
   msg_track_box_kf.odom.twist.twist.angular.z   = comega;
 
-}
+} 
 
 void Cluster::rectangleFitting(const pointList& new_cluster){
   //This function is based on ¨Efficient L-Shape Fitting for
   //Vehicle Detection Using Laser Scanners¨
+  unsigned int d = 25;
+  unsigned int n = new_cluster.size(); 
 
-  unsigned int n = new_cluster.size();
-  VectorXd e1(2),e2(2);
+  //VectorXd e1(2),e2(2);
   MatrixXd X(n, 2); 
+  //dimensione max di X intorno ai 60
   for (unsigned int i = 0; i < n; ++i) {
     X(i,0) = new_cluster[i].first;
     X(i,1) = new_cluster[i].second;
   }
-  VectorXd C1(n),C2(n);
-  double q;
-  unsigned int i =0;
-  th = 0.0;
-  //TODO make d configurable through Rviz
-  unsigned int d = 25;
-  ArrayX2d Q(d,2);
-  float step = (3.14/2)/d;
-  //#pragma omp parallel for
-  for (i = 0; i < d; ++i) {
-    e1 << cos(th), sin(th);
-    e2 <<-sin(th), cos(th);
-    C1 = X * e1;
-    C2 = X * e2;
 
-    //q = areaCriterion(C1,C2);
-    q = closenessCriterion(C1,C2,0.001);
-    Q(i,0) = th;
-    Q(i,1) = q;
+  h_x = X.data();
 
-    th = th + step;
-  }
 
-  ArrayX2d::Index max_index;
-  Q.col(1).maxCoeff(&max_index);//find Q with maximum value
-  th = Q(max_index,0);
-  e1 << cos(th), sin(th);
-  e2 <<-sin(th), cos(th);
-  C1 = X * e1;
-  C2 = X * e2;
-  // The coefficients of the four lines are calculated
-  double a1,a2,a3,a4,b1,b2,b3,b4,c1,c2,c3,c4;
-  a1 = cos(th);
-  b1 = sin(th);
-  c1 = C1.minCoeff();
-  a2 = -sin(th);
-  b2 = cos(th);
-  c2 = C2.minCoeff();
-  a3 = cos(th);
-  b3 = sin(th);
-  c3 = C1.maxCoeff();
-  a4 = -sin(th);
-  b4 = cos(th);
-  c4 = C2.maxCoeff();
-
+  double cf[12];  
+  launchKernelCuda(h_x, n, cf);
+  
   std::vector<Point> corners;
-  corners.push_back(lineIntersection(a2, b2, c2, a3, b3, c3));
-  corners.push_back(lineIntersection(a1, b1, c1, a2, b2, c2));
-  corners.push_back(lineIntersection(a1, b1, c1, a4, b4, c4));
-  corners.push_back(lineIntersection(a4, b4, c4, a3, b3, c3));
+
+  corners.push_back(lineIntersection(cf[3], cf[4], cf[5], cf[6], cf[7], cf[8]));
+  corners.push_back(lineIntersection(cf[0], cf[1], cf[2], cf[3], cf[4], cf[5]));
+  corners.push_back(lineIntersection(cf[0], cf[1], cf[2], cf[9], cf[10], cf[11]));
+  corners.push_back(lineIntersection(cf[9], cf[10], cf[11], cf[6], cf[7], cf[8]));
+  
   corner_list = corners;
 
   //Find the corner point that is closest to the ego vehicle
@@ -225,8 +200,8 @@ void Cluster::rectangleFitting(const pointList& new_cluster){
   thetaL1   = atan2((l1l2[0].second - l1l2[1].second),(l1l2[0].first - l1l2[1].first)); 
 
   thetaL2 = atan2((l1l2[2].second - l1l2[1].second),(l1l2[2].first - l1l2[1].first)); 
-  
 } 
+
 visualization_msgs::Marker Cluster::getBoundingBoxVisualisationMessage() {
 
   visualization_msgs::Marker bb_msg;
@@ -361,42 +336,8 @@ double Cluster::areaCriterion(const VectorXd& C1, const VectorXd& C2){
   return a; 
 
 }
-double Cluster::closenessCriterion(const VectorXd& C1, const VectorXd& C2, const double& d0){
-  //Algorithm 4 of "Efficient L-Shape Fitting for Vehicle Detection Using Laser Scanners"
 
-  double c1_max, c1_min, c2_max, c2_min;
-  c1_max = C1.maxCoeff();
-  c1_min = C1.minCoeff();
-  c2_max = C2.maxCoeff();
-  c2_min = C2.minCoeff();
-  VectorXd C1_max = c1_max - C1.array(); 
-  VectorXd C1_min = C1.array() - c1_min;
-  VectorXd D1, D2;
-  if(C1_max.squaredNorm() < C1_min.squaredNorm()){
-    D1 = C1_max;
-  }
-  else{
-    D1 = C1_min;
-  }
-  VectorXd C2_max = c2_max - C2.array(); 
-  VectorXd C2_min = C2.array() - c2_min;
-  if(C2_max.squaredNorm() < C2_min.squaredNorm()){
-    D2 = C2_max;
-  }
-  else{
-    D2 = C2_min;
-  }
 
-  double d, min;
-  double b =0 ;
-  for (int i = 0; i < D1.size(); ++i) {
-    min = std::min(D1(i),D2(i));
-    d = std::max(min,d0);
-    b = b + 1/d;
-  }
- 
-  return b; 
-}
 visualization_msgs::Marker Cluster::getThetaBoxVisualisationMessage() {
 
   visualization_msgs::Marker arrow_marker;
