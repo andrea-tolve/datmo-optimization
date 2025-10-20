@@ -31,8 +31,15 @@
 
 #include "ros/ros.h"
 #include "datmo.hpp"
+#include <string>
+
+bool compareVectorSize(const std::vector<double>& a, const std::vector<double>& b) {
+    return a.size() < b.size(); // Ordine inverso per ottenere il vettore pi� grande
+}
+
 int main(int argc, char **argv)
 {
+
   //Initiate ROS
   ros::init(argc, argv, "datmo_node");
 
@@ -40,6 +47,7 @@ int main(int argc, char **argv)
   Datmo  datmo_object;
 
   ros::spin();
-
+  memFree();
   return 0;
 }
+

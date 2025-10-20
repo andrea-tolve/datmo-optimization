@@ -32,8 +32,9 @@
 #include "datmo.hpp"
 
 Datmo::Datmo(){
+  memAllocate();
   ros::NodeHandle n; 
-  ros::NodeHandle n_private("~");
+  ros::NodeHandle n_private("~"); 
   ROS_INFO("Starting Detection And Tracking of Moving Objects");
 
   n_private.param("lidar_frame", lidar_frame, string("base_link"));
@@ -44,16 +45,19 @@ Datmo::Datmo(){
   n_private.param("euclidean_distance", euclidean_distance, 0.25);
   n_private.param("pub_markers", p_marker_pub, false);
 
+  //used to publish tracking data and markers for visualization in the corresponding topics
   pub_tracks_box_kf     = n.advertise<datmo::TrackArray>("datmo/box_kf", 10);
   pub_marker_array   = n.advertise<visualization_msgs::MarkerArray>("datmo/marker_array", 10);
-  sub_scan = n.subscribe("/scan", 1, &Datmo::callback, this);
+  //used to receive LiDAR data (subscription to the topic)
+  sub_scan = n.subscribe("/scan", 1, &Datmo::callback, this); 
+
 
 }
 
 Datmo::~Datmo(){
 }
-void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
 
+void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
   // delete all Markers 
   visualization_msgs::Marker marker;
   visualization_msgs::MarkerArray markera;
@@ -63,7 +67,6 @@ void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
 
   // Only if there is a transform between the world and lidar frame continue
   if(tf_listener.canTransform(world_frame, lidar_frame, ros::Time())){
-
     //Find position of ego vehicle in world frame, so it can be fed through to the cluster objects
     tf::StampedTransform ego_pose;
     tf_listener.lookupTransform(world_frame, lidar_frame, ros::Time(0), ego_pose);
@@ -109,7 +112,7 @@ void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
       mean_y = sum_y / point_clusters[g].size();
 
       for(unsigned int c=0;c<clusters.size();++c){
-        euclidean[g][c] = abs( mean_x - clusters[c].meanX()) + abs(mean_y - clusters[c].meanY()); 
+        euclidean[g][c] = abs(mean_x - clusters[c].meanX()) + abs(mean_y - clusters[c].meanY()); 
       }
     }
 
@@ -119,21 +122,19 @@ void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
       unsigned int position;
       double min_distance = euclidean_distance;
       for(unsigned int g=0; g<point_clusters.size();++g){
-    if(euclidean[g][c] < min_distance){
-      min_distance = euclidean[g][c];
-      position = g;
-    }
+        if(euclidean[g][c] < min_distance){
+          min_distance = euclidean[g][c];
+          position = g;
+        }
       }
       if(min_distance < euclidean_distance){
         g_matched[position] = true, c_matched[c] = true;
         pairs.push_back(pair<int,int>(c,position));
       }
     }
-
     //Update Tracked Clusters
-    #pragma omp parallel for
     for(unsigned int p=0; p<pairs.size();++p){
-      clusters[pairs[p].first].update(point_clusters[pairs[p].second], dt, ego_pose);
+      clusters[pairs[p].first].update(point_clusters[pairs[p].second], dt, ego_pose); 
     }
        
     //Delete Not Associated Clusters
@@ -154,12 +155,13 @@ void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
     o++;
     }
 
-    // Initialisation of new Cluster Objects
+    // Initialisation of new Cluster Objects 
     for(unsigned int i=0; i<point_clusters.size();++i){
       if(g_matched[i] == false && point_clusters[i].size()< max_cluster_size){
-	Cluster cl(cclusters, point_clusters[i], dt, world_frame, ego_pose);
-	cclusters++;
-	clusters.push_back(cl);
+	    Cluster cl(cclusters, point_clusters[i], dt, world_frame, ego_pose);
+
+	    cclusters++;
+	    clusters.push_back(cl);
       } 
     }
     
@@ -188,13 +190,17 @@ void Datmo::callback(const sensor_msgs::LaserScan::ConstPtr& scan_in){
 
     pub_marker_array.publish(marker_array);
     pub_tracks_box_kf.publish(track_array_box_kf);
+
     visualiseGroupedPoints(point_clusters);
     
+
   }
   else{ //If the tf is not possible init all states at 0
     ROS_WARN_DELAYED_THROTTLE(1 ,"No transform could be found between %s and %s", lidar_frame.c_str(), world_frame.c_str());
   };
+
 }
+
 void Datmo::visualiseGroupedPoints(const vector<pointList>& point_clusters){
   //Publishing the clusters with different colors
   visualization_msgs::MarkerArray marker_array;
@@ -231,13 +237,15 @@ void Datmo::visualiseGroupedPoints(const vector<pointList>& point_clusters){
   pub_marker_array.publish(marker_array);
 
 }
+/*
+    Clustering algorithm to group points from a LiDAR scanner into clusters
+*/
 void Datmo::Clustering(const sensor_msgs::LaserScan::ConstPtr& scan_in, vector<pointList> &clusters){
-  scan = *scan_in;
+  scan = *scan_in; 
 
 
   int cpoints = 0;
   
-  //Find the number of non inf laser scan values and save them in c_points
   for (unsigned int i = 0; i < scan.ranges.size(); ++i){
     if(isinf(scan.ranges[i]) == 0){
       cpoints++;
@@ -246,11 +254,11 @@ void Datmo::Clustering(const sensor_msgs::LaserScan::ConstPtr& scan_in, vector<p
   const int c_points = cpoints;
 
   int j = 0;
-  vector< vector<float> > polar(c_points +1 ,vector<float>(2)); //c_points+1 for wrapping
+  vector< vector<float> > polar(c_points +1 ,vector<float>(2)); 
   for(unsigned int i = 0; i<scan.ranges.size(); ++i){
     if(!isinf(scan.ranges[i])){
-      polar[j][0] = scan.ranges[i]; //first column is the range 
-      polar[j][1] = scan.angle_min + i*scan.angle_increment; //second angle in rad
+      polar[j][0] = scan.ranges[i];  
+      polar[j][1] = scan.angle_min + i*scan.angle_increment;
       j++;
     }
   }
@@ -258,18 +266,16 @@ void Datmo::Clustering(const sensor_msgs::LaserScan::ConstPtr& scan_in, vector<p
   //Complete the circle
   polar[c_points] = polar[0];
 
-  //Find clusters based on adaptive threshold distance
   float d;
 
- //There are two flags, since two consecutive points can belong to two independent clusters
-  vector<bool> clustered1(c_points+1 ,false); //change to true when it is the first of the cluster
-  vector<bool> clustered2(c_points+1 ,false); // change to true when it is clustered by another one
+  vector<bool> clustered1(c_points+1 ,false); 
+  vector<bool> clustered2(c_points+1 ,false); 
 
-  float l = 45; // λ is an acceptable angle for determining the points to be of the same cluster
-  l = l * 0.0174532;   // degree to radian conversion;
-  const float s = 0;   // σr is the standard deviation of the noise of the distance measure
+  float l = 45; 
+  l = l * 0.0174532;   
+  const float s = 0;   
   for (unsigned int i=0; i < c_points ; ++i){
-    double dtheta = polar[i+1][1]- polar[i][1];
+    double dtheta = polar[i+1][1]- polar[i][1];  // angle difference between point i and point i+1
     double adaptive = min(polar[i][0],polar[i+1][0]) * (sin(dth)) / (sin(l - (dth))) + s; //Dthreshold
     d = sqrt( pow(polar[i][0],2) + pow(polar[i+1][0],2)-2 * polar[i][0]*polar[i+1][0]*cos(polar[i+1][1] - polar[i][1]));
     //ROS_INFO_STREAM("distance: "<<dth<<", adapt: "<<adaptive<<", dtheta: "<<dtheta);
@@ -277,35 +283,37 @@ void Datmo::Clustering(const sensor_msgs::LaserScan::ConstPtr& scan_in, vector<p
       //ROS_INFO_STREAM("problem");
     //}
 
+	//try adaptive Dthreshold
     if(d<dth) {
-      clustered1[i] = true; //both points belong to clusters
-      clustered2[i+1] = true;}
+      clustered1[i] = true; 
+      clustered2[i+1] = true; 
+    }
   }
 
-  clustered2[0] = clustered2[c_points];
+  clustered2[0] = clustered2[c_points]; 
   
-  //Going through the points and finding the beginning of clusters and number of points
-  vector<int> begin; //saving the first index of a cluster
-  vector<int> nclus; //number of clustered points
+  
+  vector<int> begin; 
+  vector<int> nclus; 
   int i =0;
-  bool flag = true; // flag for not going back through the stack 
+  bool flag = true; 
 
   while(i<c_points && flag==true){
-
     if (clustered1[i] == true && clustered2[i] == false && flag == true){
       begin.push_back(i);
       nclus.push_back(1);
+      //check that following points still belong to the cluster 
       while(clustered2[i+1] == true && clustered1[i+1] == true ){
-	i++;
-	++nclus.back();
-	if(i==c_points-1 && flag == true){
-	  i = -1;
-	  flag = false;
-	}
+		    i++;
+		    ++nclus.back();
+		    if(i==c_points-1 && flag == true){ 
+		        i = -1;
+		        flag = false; //avoid checking the same clusters over and over again
+		    }
       }
-      ++nclus.back();//take care of 0 1 flags - last of the cluster
+      ++nclus.back();
     }
-  i++;
+	  i++;
   }
   // take care of last point being beginning of cluster
   if(clustered1[cpoints-1]== true and clustered2[c_points-1] == false){
@@ -313,15 +321,17 @@ void Datmo::Clustering(const sensor_msgs::LaserScan::ConstPtr& scan_in, vector<p
       nclus.push_back(1);
       i = 0;
       while(clustered2[i] == true && clustered1[i] == true ){
-	i++;
-	++nclus.back();
+		    i++;
+		    ++nclus.back();
       }
 
   }
 
-  polar.pop_back(); //remove the wrapping element
+  polar.pop_back();
   int len = polar.size();
-
+  /*
+    conversion of points from polar to Cartesian space
+  */
   for(unsigned int i=0; i<begin.size(); ++i){
 
     pointList cluster;
@@ -347,11 +357,11 @@ void Datmo::Clustering(const sensor_msgs::LaserScan::ConstPtr& scan_in, vector<p
     clusters.push_back(cluster);
   }
 }
+
 void Datmo::transformPointList(const pointList& in, pointList& out){
   //This funcion transforms pointlist between coordinate frames and it is a wrapper for the
   //transformPoint function
   //There is not try catch block because it is supposed to be already encompassed into one
-  
   geometry_msgs::PointStamped point_in, point_out;
   Point point; 
   point_in.header.frame_id = lidar_frame;
@@ -364,4 +374,5 @@ void Datmo::transformPointList(const pointList& in, pointList& out){
     point.second= point_out.point.y;
     out.push_back(point);
   }
+
 }

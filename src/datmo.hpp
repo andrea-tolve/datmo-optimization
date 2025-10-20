@@ -46,7 +46,6 @@
 #include <tf/tf.h>
 #include <datmo/TrackArray.h>
 #include <datmo/Track.h>
-
 #include "cluster.hpp"
 
 typedef std::pair<double, double> Point;
@@ -64,7 +63,6 @@ class Datmo
 public:
   Datmo();
   ~Datmo();
-
   void callback(const sensor_msgs::LaserScan::ConstPtr &);
   void Clustering(const sensor_msgs::LaserScan::ConstPtr& , vector<pointList> &);
   void visualiseGroupedPoints(const vector<pointList> &);
@@ -77,7 +75,6 @@ private:
   ros::Subscriber sub_scan;
   sensor_msgs::LaserScan scan;
   vector<Cluster> clusters;
-
   //Tuning Parameteres
   double dt;
   ros::Time time;
@@ -94,5 +91,5 @@ private:
   bool w_exec_times;
   string lidar_frame;
   string world_frame;
-
+  
 };
