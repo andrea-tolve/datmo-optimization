@@ -19,6 +19,10 @@ find_package(catkin REQUIRED COMPONENTS
 )
 find_package(Eigen REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(CUDA REQUIRED)
+
+#change according to your architecture
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch=sm_86")
 
 #MultiThreading Library
 OPTION (USE_OpenMP "Use OpenMP" OFF)
@@ -49,8 +53,11 @@ catkin_package(
 include_directories(
   ${catkin_INCLUDE_DIRS}
   ${Eigen_INCLUDE_DIRS}
+  ${CUDA_INCLUDE_DIRS}
 )
+
+cuda_add_library(cluster_lib src/cluster_cuda.cu)
 
 add_executable(datmo src/main.cpp src/l_shape_tracker.cpp src/kalman-cpp/kalman.cpp src/datmo.cpp src/cluster.cpp)
 add_dependencies(datmo ${catkin_EXPORTED_TARGETS} datmo_generate_messages_cpp)
-target_link_libraries(datmo ${catkin_LIBRARIES})
+target_link_libraries(datmo cluster_lib ${catkin_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES})
